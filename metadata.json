@@ -1,0 +1,7 @@
+{
+  "name": "FINVEXA",
+  "description": "Track. Save. Grow. - Personal finance tracking web app connected with Google Sheets",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
