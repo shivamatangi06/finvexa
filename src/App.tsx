@@ -54,6 +54,7 @@ import { GoalsView } from './components/GoalsView';
 import { MobileBottomNav } from './components/MobileBottomNav';
 import { SettingsView } from './components/SettingsView';
 import { AuthScreen } from './components/AuthScreen';
+import { SecurityPinModal, PinModalMode } from './components/SecurityPinModal';
 import {
   Plus,
   Minus,
@@ -67,6 +68,11 @@ import {
 } from 'lucide-react';
 
 export default function App() {
+  // Global Security PIN Lock state (Masks amounts and protects targets until unlocked)
+  const [isUnlocked, setIsUnlocked] = useState<boolean>(false);
+  const [isPinModalOpen, setIsPinModalOpen] = useState<boolean>(false);
+  const [pinModalMode, setPinModalMode] = useState<PinModalMode>('unlock');
+
   // Theme State (Light / Dark / System Default)
   const [currentTheme, setCurrentTheme] = useState<ThemeMode>(() => getInitialTheme());
 
@@ -411,6 +417,12 @@ export default function App() {
         netBalance={overallStats.netBalance}
         activeDesktopTab={activeDesktopTab}
         onTabChange={(tab) => setActiveDesktopTab(tab)}
+        isUnlocked={isUnlocked}
+        onOpenUnlockModal={() => {
+          setPinModalMode('unlock');
+          setIsPinModalOpen(true);
+        }}
+        onLock={() => setIsUnlocked(false)}
       />
 
       {/* Global Error Banner */}
@@ -478,6 +490,7 @@ export default function App() {
                 transactions={transactions}
                 selectedMonth={selectedDashboardMonth}
                 onSelectMonth={(monthKey) => setSelectedDashboardMonth(monthKey)}
+                isUnlocked={isUnlocked}
               />
 
               {/* 5. Mobile Expense Breakdown Pie Chart */}
@@ -507,6 +520,7 @@ export default function App() {
                 onDeleteTransaction={handleDeleteTransaction}
                 onDeleteTransactionsBatch={handleDeleteTransactionsBatch}
                 sheetUrl={sheetInfo?.url}
+                isUnlocked={isUnlocked}
               />
             </div>
           )}
@@ -533,6 +547,7 @@ export default function App() {
                 transactions={transactions}
                 selectedMonth={selectedDashboardMonth}
                 onSelectMonth={(monthKey) => setSelectedDashboardMonth(monthKey)}
+                isUnlocked={isUnlocked}
               />
               <ExpensePieChart data={currentMonthExpenses} monthLabel={monthLabel} />
               <TrendLineChart
@@ -556,6 +571,15 @@ export default function App() {
               onAddCategory={handleAddCategory}
               onSignOut={handleSignOut}
               isRefreshing={isRefreshing}
+              isUnlocked={isUnlocked}
+              onOpenUnlockModal={() => {
+                setPinModalMode('unlock');
+                setIsPinModalOpen(true);
+              }}
+              onOpenChangePinModal={() => {
+                setPinModalMode('change');
+                setIsPinModalOpen(true);
+              }}
             />
           )}
         </div>
@@ -583,6 +607,7 @@ export default function App() {
                     transactions={transactions}
                     selectedMonth={selectedDashboardMonth}
                     onSelectMonth={(monthKey) => setSelectedDashboardMonth(monthKey)}
+                    isUnlocked={isUnlocked}
                   />
                 </div>
 
@@ -633,6 +658,7 @@ export default function App() {
               onDeleteTransaction={handleDeleteTransaction}
               onDeleteTransactionsBatch={handleDeleteTransactionsBatch}
               sheetUrl={sheetInfo?.url}
+              isUnlocked={isUnlocked}
             />
           )}
         </div>
@@ -670,6 +696,15 @@ export default function App() {
               onAddCategory={handleAddCategory}
               onSignOut={handleSignOut}
               isRefreshing={isRefreshing}
+              isUnlocked={isUnlocked}
+              onOpenUnlockModal={() => {
+                setPinModalMode('unlock');
+                setIsPinModalOpen(true);
+              }}
+              onOpenChangePinModal={() => {
+                setPinModalMode('change');
+                setIsPinModalOpen(true);
+              }}
             />
           </div>
         </div>
@@ -683,6 +718,17 @@ export default function App() {
           if (tab === 'add') {
             setPreSelectedType('Expense');
           }
+        }}
+      />
+
+      {/* Global Centralized Security PIN Modal */}
+      <SecurityPinModal
+        isOpen={isPinModalOpen}
+        initialMode={pinModalMode}
+        onClose={() => setIsPinModalOpen(false)}
+        onSuccessUnlock={() => {
+          setIsUnlocked(true);
+          setIsPinModalOpen(false);
         }}
       />
     </div>

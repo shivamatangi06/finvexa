@@ -68,7 +68,7 @@ export const DashboardMonthNav: React.FC<DashboardMonthNavProps> = ({
       className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-xs px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-colors"
     >
       {/* Left: Section Label & Clear Selected Period Indicator */}
-      <div className="flex items-center gap-2.5">
+      <div className="flex items-center justify-center sm:justify-start gap-2.5 text-center sm:text-left">
         <div className="w-8 h-8 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
           <Calendar className="w-4 h-4" />
         </div>

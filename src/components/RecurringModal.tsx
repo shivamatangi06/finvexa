@@ -464,10 +464,7 @@ export const RecurringModal: React.FC<RecurringModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="mt-5 pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
-          <p className="text-[11px] text-slate-400">
-            Posting appends the entry into Google Sheets with formatted date DD-MM-YYYY.
-          </p>
+        <div className="mt-5 pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-end">
           <button
             type="button"
             onClick={onClose}

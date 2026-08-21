@@ -23,7 +23,7 @@ export const SummaryCards: React.FC<SummaryCardsProps> = ({ stats }) => {
   return (
     <div
       id="summary-cards-container"
-      className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 sm:gap-4 shrink-0"
+      className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 sm:gap-4 shrink-0"
     >
       {/* 1. Total Income */}
       <div
@@ -38,7 +38,7 @@ export const SummaryCards: React.FC<SummaryCardsProps> = ({ stats }) => {
             <TrendingUp className="w-4 h-4" />
           </div>
         </div>
-        <div className="mt-3">
+        <div className="mt-3 text-center sm:text-left">
           <div className="text-2xl font-black text-emerald-600 dark:text-emerald-400 tracking-tight truncate">
             {formatINR(stats.totalIncome)}
           </div>
@@ -61,7 +61,7 @@ export const SummaryCards: React.FC<SummaryCardsProps> = ({ stats }) => {
             <TrendingDown className="w-4 h-4" />
           </div>
         </div>
-        <div className="mt-3">
+        <div className="mt-3 text-center sm:text-left">
           <div className="text-2xl font-black text-rose-600 dark:text-rose-400 tracking-tight truncate">
             {formatINR(stats.totalExpenses)}
           </div>
@@ -94,7 +94,7 @@ export const SummaryCards: React.FC<SummaryCardsProps> = ({ stats }) => {
             <Wallet className="w-4 h-4" />
           </div>
         </div>
-        <div className="mt-3">
+        <div className="mt-3 text-center sm:text-left">
           <div
             className={`text-2xl font-black tracking-tight truncate ${
               leftover >= 0 ? 'text-slate-800 dark:text-slate-100' : 'text-amber-600 dark:text-amber-400'

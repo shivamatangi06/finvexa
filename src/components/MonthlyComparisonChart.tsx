@@ -19,12 +19,14 @@ interface MonthlyComparisonChartProps {
   transactions: Transaction[];
   onSelectMonth?: (monthKey: string) => void;
   selectedMonth?: string;
+  isUnlocked?: boolean;
 }
 
 export const MonthlyComparisonChart: React.FC<MonthlyComparisonChartProps> = ({
   transactions,
   onSelectMonth,
   selectedMonth,
+  isUnlocked = false,
 }) => {
   const [rangeMonths, setRangeMonths] = useState<number>(6);
 
@@ -48,18 +50,18 @@ export const MonthlyComparisonChart: React.FC<MonthlyComparisonChartProps> = ({
             <span className="flex items-center gap-1">
               <TrendingUp className="w-3 h-3" /> Income:
             </span>
-            <span className="font-bold">{formatINR(inc)}</span>
+            <span className="font-bold">{isUnlocked ? formatINR(inc) : '••••••'}</span>
           </div>
           <div className="flex items-center justify-between text-rose-400">
             <span className="flex items-center gap-1">
               <TrendingDown className="w-3 h-3" /> Expense:
             </span>
-            <span className="font-bold">{formatINR(exp)}</span>
+            <span className="font-bold">{isUnlocked ? formatINR(exp) : '••••••'}</span>
           </div>
           <div className="flex items-center justify-between pt-1 border-t border-slate-800/80 text-slate-300 font-bold">
             <span>Net Balance:</span>
             <span className={net >= 0 ? 'text-indigo-300' : 'text-rose-400'}>
-              {net >= 0 ? '+' : '−'}{formatINR(Math.abs(net))}
+              {isUnlocked ? `${net >= 0 ? '+' : '−'}${formatINR(Math.abs(net))}` : '••••••'}
             </span>
           </div>
         </div>
@@ -117,19 +119,19 @@ export const MonthlyComparisonChart: React.FC<MonthlyComparisonChartProps> = ({
         <div>
           <span className="text-[9px] uppercase font-bold text-slate-400 dark:text-slate-500">Period Income</span>
           <div className="text-xs sm:text-sm font-bold text-emerald-600 dark:text-emerald-400 truncate">
-            {formatINR(totalRangeIncome)}
+            {isUnlocked ? formatINR(totalRangeIncome) : '••••••'}
           </div>
         </div>
         <div>
           <span className="text-[9px] uppercase font-bold text-slate-400 dark:text-slate-500">Period Expenses</span>
           <div className="text-xs sm:text-sm font-bold text-rose-600 dark:text-rose-400 truncate">
-            {formatINR(totalRangeExpenses)}
+            {isUnlocked ? formatINR(totalRangeExpenses) : '••••••'}
           </div>
         </div>
         <div>
           <span className="text-[9px] uppercase font-bold text-slate-400 dark:text-slate-500">Period Net Balance</span>
           <div className={`text-xs sm:text-sm font-bold truncate ${netRange >= 0 ? 'text-indigo-600 dark:text-indigo-400' : 'text-rose-600 dark:text-rose-400'}`}>
-            {netRange >= 0 ? '+' : '−'}{formatINR(Math.abs(netRange))}
+            {isUnlocked ? `${netRange >= 0 ? '+' : '−'}${formatINR(Math.abs(netRange))}` : '••••••'}
           </div>
         </div>
       </div>

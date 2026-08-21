@@ -19,7 +19,6 @@ import {
   MinusSquare,
   ArrowUpRight,
   ArrowDownLeft,
-  Sliders,
   Sparkles,
 } from 'lucide-react';
 import {
@@ -45,14 +44,11 @@ import {
 } from '../utils/formatters';
 import {
   getSavingsTarget,
-  setSavingsTarget,
   getEmergencyFundTarget,
-  setEmergencyFundTarget,
   calculateTargetProgress,
   calculateCombinedCapitalPreservedProgress,
 } from '../utils/targets';
 import { ConfirmationDialog } from './ConfirmationDialog';
-import { EditGoalsTargetModal } from './EditGoalsTargetModal';
 
 interface GoalsViewProps {
   transactions: Transaction[];
@@ -60,6 +56,7 @@ interface GoalsViewProps {
   onDeleteTransaction?: (rowIndex: number) => Promise<void>;
   onDeleteTransactionsBatch?: (rowIndices: number[]) => Promise<void>;
   sheetUrl?: string;
+  isUnlocked?: boolean;
 }
 
 export const GoalsView: React.FC<GoalsViewProps> = ({
@@ -68,6 +65,7 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
   onDeleteTransaction,
   onDeleteTransactionsBatch,
   sheetUrl: _sheetUrl,
+  isUnlocked = false,
 }) => {
   // Timeframe state: 'month' | 'year' | 'alltime'
   const [timeframe, setTimeframe] = useState<GoalsTimeframe>('alltime');
@@ -78,10 +76,9 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState<string>('ALL');
 
-  // Configurable Target States (loaded from localStorage with fallbacks)
-  const [savingsTargetVal, setSavingsTargetVal] = useState<number>(() => getSavingsTarget());
-  const [emergencyTargetVal, setEmergencyTargetVal] = useState<number>(() => getEmergencyFundTarget());
-  const [isTargetModalOpen, setIsTargetModalOpen] = useState(false);
+  // Configurable Target values (read directly from targets utility configured in Settings)
+  const savingsTargetVal = getSavingsTarget();
+  const emergencyTargetVal = getEmergencyFundTarget();
 
   // Selected row indices for bulk deletion
   const [selectedRowIndices, setSelectedRowIndices] = useState<Set<number>>(new Set());
@@ -114,12 +111,12 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
     );
   }, [goalsStats.savings, goalsStats.emergencyFund, savingsTargetVal, emergencyTargetVal]);
 
-  // Handler for saving targets from modal
-  const handleSaveTargets = (newSavings: number, newEmergency: number) => {
-    setSavingsTargetVal(newSavings);
-    setEmergencyTargetVal(newEmergency);
-    setSavingsTarget(newSavings);
-    setEmergencyFundTarget(newEmergency);
+  // Helper for masking amounts when locked
+  const displayAmount = (amount: number): string => {
+    if (isUnlocked) {
+      return formatINR(amount);
+    }
+    return '••••••';
   };
 
   // Filter transactions for current timeframe and search
@@ -311,8 +308,8 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
 
   return (
     <div id="goals-view-container" className="space-y-4 sm:space-y-5">
-      {/* 1. Header with Timeframe Switcher & Target Configurator */}
-      <div className="bg-white dark:bg-slate-900 rounded-xl sm:rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 transition-colors">
+      {/* 1. Header with Timeframe Switcher & PIN Security Lock */}
+      <div className="bg-white dark:bg-slate-900 rounded-xl sm:rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs p-4 sm:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-3.5 sm:gap-4 transition-colors">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
             <Target className="w-5 h-5" />
@@ -327,21 +324,10 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
           </div>
         </div>
 
-        {/* Target Edit Action & Timeframe Selector */}
-        <div className="flex flex-wrap items-center gap-2 sm:gap-2.5">
-          {/* Configure Targets Button */}
-          <button
-            type="button"
-            id="btn-edit-goals-targets"
-            onClick={() => setIsTargetModalOpen(true)}
-            className="px-3 py-1.5 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 text-xs font-bold rounded-xl shadow-2xs flex items-center gap-1.5 transition-all cursor-pointer"
-          >
-            <Sliders className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
-            <span>Set Targets</span>
-          </button>
-
+        {/* Timeframe Selector & Mode Sub-navigators */}
+        <div className="flex flex-wrap items-center gap-2 sm:gap-2.5 pt-0.5 lg:pt-0">
           {/* Mode Pill: Month | Year | All-Time */}
-          <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl text-xs font-bold">
+          <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl text-xs font-bold shrink-0">
             <button
               type="button"
               id="btn-goals-timeframe-month"
@@ -382,7 +368,7 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
 
           {/* Sub-Navigator when in Month mode */}
           {timeframe === 'month' && (
-            <div className="flex items-center gap-1 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl px-2 py-1">
+            <div className="flex items-center gap-1 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl px-2 py-1 shrink-0">
               <button
                 type="button"
                 onClick={handlePrevMonth}
@@ -407,7 +393,7 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
 
           {/* Sub-Navigator when in Year mode */}
           {timeframe === 'year' && (
-            <div className="flex items-center gap-1 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl px-2 py-1">
+            <div className="flex items-center gap-1 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl px-2 py-1 shrink-0">
               <button
                 type="button"
                 onClick={handlePrevYear}
@@ -450,8 +436,8 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
 
           <div className="mt-3.5">
             <div className="flex items-baseline justify-between gap-2">
-              <div className="text-xl sm:text-2xl font-black text-blue-600 dark:text-blue-400 tracking-tight">
-                {formatINR(goalsStats.savings)}
+              <div className="text-xl sm:text-2xl font-black text-blue-600 dark:text-blue-400 tracking-tight font-mono">
+                {displayAmount(goalsStats.savings)}
               </div>
               <span className="text-xs font-black px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/80 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800/80 shrink-0">
                 {savingsProgress.percentage}%
@@ -467,14 +453,7 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
             </div>
 
             <div className="mt-2 flex items-center justify-between text-[11px] text-slate-400 dark:text-slate-500 font-medium">
-              <span className="truncate">Target: {formatINR(savingsTargetVal)}</span>
-              <button
-                type="button"
-                onClick={() => setIsTargetModalOpen(true)}
-                className="text-blue-600 dark:text-blue-400 hover:underline text-[10px] font-bold cursor-pointer shrink-0 ml-1"
-              >
-                Edit
-              </button>
+              <span className="truncate">Target: {isUnlocked ? formatINR(savingsTargetVal) : '••••••'}</span>
             </div>
           </div>
         </div>
@@ -495,8 +474,8 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
 
           <div className="mt-3.5">
             <div className="flex items-baseline justify-between gap-2">
-              <div className="text-xl sm:text-2xl font-black text-amber-600 dark:text-amber-400 tracking-tight">
-                {formatINR(goalsStats.emergencyFund)}
+              <div className="text-xl sm:text-2xl font-black text-amber-600 dark:text-amber-400 tracking-tight font-mono">
+                {displayAmount(goalsStats.emergencyFund)}
               </div>
               <span className="text-xs font-black px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/80 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800/80 shrink-0">
                 {emergencyProgress.percentage}%
@@ -512,19 +491,12 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
             </div>
 
             <div className="mt-2 flex items-center justify-between text-[11px] text-slate-400 dark:text-slate-500 font-medium">
-              <span className="truncate">Target: {formatINR(emergencyTargetVal)}</span>
-              <button
-                type="button"
-                onClick={() => setIsTargetModalOpen(true)}
-                className="text-amber-600 dark:text-amber-400 hover:underline text-[10px] font-bold cursor-pointer shrink-0 ml-1"
-              >
-                Edit
-              </button>
+              <span className="truncate">Target: {isUnlocked ? formatINR(emergencyTargetVal) : '••••••'}</span>
             </div>
           </div>
         </div>
 
-        {/* 3. LENT (Receivables) - Clean, prominent */}
+        {/* 3. LENT (Receivables) - Clean, prominent, standalone */}
         <div
           id="card-goals-lent"
           className="bg-white dark:bg-slate-900 p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col justify-between hover:border-purple-300 dark:hover:border-purple-700 transition-all"
@@ -539,8 +511,8 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
           </div>
 
           <div className="mt-3.5">
-            <div className="text-xl sm:text-2xl font-black text-purple-600 dark:text-purple-400 tracking-tight">
-              {formatINR(goalsStats.lent)}
+            <div className="text-xl sm:text-2xl font-black text-purple-600 dark:text-purple-400 tracking-tight font-mono">
+              {displayAmount(goalsStats.lent)}
             </div>
 
             {/* Visual Accent */}
@@ -557,7 +529,7 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
           </div>
         </div>
 
-        {/* 4. BORROWED (Payables) - Clean, prominent */}
+        {/* 4. BORROWED (Payables) - Clean, prominent, standalone */}
         <div
           id="card-goals-borrowed"
           className="bg-white dark:bg-slate-900 p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col justify-between hover:border-rose-300 dark:hover:border-rose-700 transition-all"
@@ -572,8 +544,8 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
           </div>
 
           <div className="mt-3.5">
-            <div className="text-xl sm:text-2xl font-black text-rose-600 dark:text-rose-400 tracking-tight">
-              {formatINR(goalsStats.borrowed)}
+            <div className="text-xl sm:text-2xl font-black text-rose-600 dark:text-rose-400 tracking-tight font-mono">
+              {displayAmount(goalsStats.borrowed)}
             </div>
 
             {/* Visual Accent */}
@@ -606,8 +578,8 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
 
           <div className="mt-3.5">
             <div className="flex items-baseline justify-between gap-2">
-              <div className="text-xl sm:text-2xl font-black text-indigo-600 dark:text-indigo-400 tracking-tight">
-                {formatINR(capitalPreservedProgress.combinedAchieved)}
+              <div className="text-xl sm:text-2xl font-black text-indigo-600 dark:text-indigo-400 tracking-tight font-mono">
+                {displayAmount(capitalPreservedProgress.combinedAchieved)}
               </div>
               <span className="text-xs font-black px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/80 shrink-0">
                 {capitalPreservedProgress.percentage}%
@@ -623,7 +595,7 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
             </div>
 
             <div className="mt-2 flex items-center justify-between text-[11px] text-slate-400 dark:text-slate-500 font-medium">
-              <span className="truncate">Combined: {formatINR(capitalPreservedProgress.combinedTarget)}</span>
+              <span className="truncate">Combined: {isUnlocked ? formatINR(capitalPreservedProgress.combinedTarget) : '••••••'}</span>
               <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 shrink-0 ml-1">
                 Savings + Emergency
               </span>
@@ -644,11 +616,11 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
           <div className="flex flex-wrap items-center gap-3 sm:gap-4 text-xs font-semibold">
             <span className="flex items-center gap-1.5 text-blue-600 dark:text-blue-400">
               <span className="w-2.5 h-2.5 rounded-full bg-blue-500" />
-              Savings: {savingsProgress.percentage}% of {formatINR(savingsTargetVal)}
+              Savings: {savingsProgress.percentage}% {isUnlocked ? `of ${formatINR(savingsTargetVal)}` : 'of ••••••'}
             </span>
             <span className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
               <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
-              Emergency: {emergencyProgress.percentage}% of {formatINR(emergencyTargetVal)}
+              Emergency: {emergencyProgress.percentage}% {isUnlocked ? `of ${formatINR(emergencyTargetVal)}` : 'of ••••••'}
             </span>
           </div>
         </div>
@@ -668,8 +640,8 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
               />
             </div>
             <div className="flex items-center justify-between text-[10px] text-slate-400 dark:text-slate-500 mt-1.5 font-medium">
-              <span>{formatINR(goalsStats.savings)} achieved</span>
-              <span>{formatINR(savingsProgress.remaining)} remaining</span>
+              <span>{isUnlocked ? `${formatINR(goalsStats.savings)} achieved` : '•••••• achieved'}</span>
+              <span>{isUnlocked ? `${formatINR(savingsProgress.remaining)} remaining` : 'Target: ••••••'}</span>
             </div>
           </div>
 
@@ -686,8 +658,8 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
               />
             </div>
             <div className="flex items-center justify-between text-[10px] text-slate-400 dark:text-slate-500 mt-1.5 font-medium">
-              <span>{formatINR(goalsStats.emergencyFund)} achieved</span>
-              <span>{formatINR(emergencyProgress.remaining)} remaining</span>
+              <span>{isUnlocked ? `${formatINR(goalsStats.emergencyFund)} achieved` : '•••••• achieved'}</span>
+              <span>{isUnlocked ? `${formatINR(emergencyProgress.remaining)} remaining` : 'Target: ••••••'}</span>
             </div>
           </div>
         </div>
@@ -906,8 +878,8 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
                         <td className="px-4 py-3 italic text-slate-400 dark:text-slate-500 text-[11px] max-w-xs truncate">
                           {tx.description || <span className="not-italic text-slate-300 dark:text-slate-600">—</span>}
                         </td>
-                        <td className={`px-5 py-3 text-right font-bold text-xs ${style.textColor} whitespace-nowrap`}>
-                          {formatINR(tx.amount)}
+                        <td className={`px-5 py-3 text-right font-bold text-xs ${style.textColor} whitespace-nowrap font-mono`}>
+                          {displayAmount(tx.amount)}
                         </td>
                         {(onDeleteTransaction || onDeleteTransactionsBatch) && (
                           <td className="px-4 py-3 text-center whitespace-nowrap">
@@ -980,8 +952,8 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
                     </div>
 
                     <div className="flex items-center gap-2 shrink-0">
-                      <div className={`text-sm font-extrabold ${style.textColor}`}>
-                        {formatINR(tx.amount)}
+                      <div className={`text-sm font-extrabold ${style.textColor} font-mono`}>
+                        {displayAmount(tx.amount)}
                       </div>
 
                       {(onDeleteTransaction || onDeleteTransactionsBatch) && (
@@ -1027,15 +999,6 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
           setPendingDeleteIndices(null);
           setPendingDeleteTx(null);
         }}
-      />
-
-      {/* Edit Goals Targets Modal */}
-      <EditGoalsTargetModal
-        isOpen={isTargetModalOpen}
-        onClose={() => setIsTargetModalOpen(false)}
-        currentSavingsTarget={savingsTargetVal}
-        currentEmergencyTarget={emergencyTargetVal}
-        onSaveTargets={handleSaveTargets}
       />
     </div>
   );
