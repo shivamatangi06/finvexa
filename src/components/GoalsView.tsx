@@ -1,8 +1,12 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 import React, { useState, useMemo } from 'react';
 import {
   PiggyBank,
   ShieldCheck,
-  ArrowLeftRight,
   TrendingUp,
   Search,
   Plus,
@@ -13,6 +17,10 @@ import {
   CheckSquare,
   Square,
   MinusSquare,
+  ArrowUpRight,
+  ArrowDownLeft,
+  Sliders,
+  Sparkles,
 } from 'lucide-react';
 import {
   Transaction,
@@ -23,6 +31,8 @@ import {
 import {
   calculateGoalsStats,
   filterGoalsTransactions,
+  isBorrowedTransaction,
+  isLentTransaction,
 } from '../utils/calculations';
 import {
   formatINR,
@@ -33,7 +43,16 @@ import {
   getCurrentMonthKey,
   getCurrentYearKey,
 } from '../utils/formatters';
+import {
+  getSavingsTarget,
+  setSavingsTarget,
+  getEmergencyFundTarget,
+  setEmergencyFundTarget,
+  calculateTargetProgress,
+  calculateCombinedCapitalPreservedProgress,
+} from '../utils/targets';
 import { ConfirmationDialog } from './ConfirmationDialog';
+import { EditGoalsTargetModal } from './EditGoalsTargetModal';
 
 interface GoalsViewProps {
   transactions: Transaction[];
@@ -50,7 +69,7 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
   onDeleteTransactionsBatch,
   sheetUrl: _sheetUrl,
 }) => {
-  // Timeframe state: 'month' | 'year' | 'alltime' (Goals timeframe kept intact)
+  // Timeframe state: 'month' | 'year' | 'alltime'
   const [timeframe, setTimeframe] = useState<GoalsTimeframe>('alltime');
   const [selectedMonth, setSelectedMonth] = useState<string>(getCurrentMonthKey());
   const [selectedYear, setSelectedYear] = useState<string>(getCurrentYearKey());
@@ -58,6 +77,11 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
   // Search & Type filter in Goals table
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState<string>('ALL');
+
+  // Configurable Target States (loaded from localStorage with fallbacks)
+  const [savingsTargetVal, setSavingsTargetVal] = useState<number>(() => getSavingsTarget());
+  const [emergencyTargetVal, setEmergencyTargetVal] = useState<number>(() => getEmergencyFundTarget());
+  const [isTargetModalOpen, setIsTargetModalOpen] = useState(false);
 
   // Selected row indices for bulk deletion
   const [selectedRowIndices, setSelectedRowIndices] = useState<Set<number>>(new Set());
@@ -72,11 +96,46 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
     return calculateGoalsStats(transactions, timeframe, selectedMonth, selectedYear);
   }, [transactions, timeframe, selectedMonth, selectedYear]);
 
+  // Target Progress calculations
+  const savingsProgress = useMemo(() => {
+    return calculateTargetProgress(goalsStats.savings, savingsTargetVal);
+  }, [goalsStats.savings, savingsTargetVal]);
+
+  const emergencyProgress = useMemo(() => {
+    return calculateTargetProgress(goalsStats.emergencyFund, emergencyTargetVal);
+  }, [goalsStats.emergencyFund, emergencyTargetVal]);
+
+  const capitalPreservedProgress = useMemo(() => {
+    return calculateCombinedCapitalPreservedProgress(
+      goalsStats.savings,
+      goalsStats.emergencyFund,
+      savingsTargetVal,
+      emergencyTargetVal
+    );
+  }, [goalsStats.savings, goalsStats.emergencyFund, savingsTargetVal, emergencyTargetVal]);
+
+  // Handler for saving targets from modal
+  const handleSaveTargets = (newSavings: number, newEmergency: number) => {
+    setSavingsTargetVal(newSavings);
+    setEmergencyTargetVal(newEmergency);
+    setSavingsTarget(newSavings);
+    setEmergencyFundTarget(newEmergency);
+  };
+
   // Filter transactions for current timeframe and search
   const filteredGoalsTransactions = useMemo(() => {
     const periodTxs = filterGoalsTransactions(transactions, timeframe, selectedMonth, selectedYear);
     return periodTxs.filter((tx) => {
-      const matchesType = filterType === 'ALL' || tx.type === filterType;
+      const matchesType = (() => {
+        if (filterType === 'ALL') return true;
+        if (filterType === 'Savings') return tx.type === 'Savings';
+        if (filterType === 'Emergency Fund') return tx.type === 'Emergency Fund';
+        if (filterType === 'Lent') return tx.type === 'Lent & Borrowed' && isLentTransaction(tx);
+        if (filterType === 'Borrowed') return tx.type === 'Lent & Borrowed' && isBorrowedTransaction(tx);
+        if (filterType === 'Lent & Borrowed') return tx.type === 'Lent & Borrowed';
+        return tx.type === filterType;
+      })();
+
       const matchesSearch =
         searchTerm === '' ||
         tx.category.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -172,30 +231,47 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
   };
 
   // Get type visual badge styling
-  const getTypeStyle = (type: TransactionType) => {
-    switch (type) {
+  const getTypeStyle = (tx: Transaction) => {
+    switch (tx.type) {
       case 'Savings':
         return {
+          label: 'Savings',
           textColor: 'text-blue-600 dark:text-blue-400',
-          badgeBg: 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800',
+          badgeBg:
+            'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800',
           icon: <PiggyBank className="w-3.5 h-3.5" />,
         };
       case 'Emergency Fund':
         return {
+          label: 'Emergency Fund',
           textColor: 'text-amber-600 dark:text-amber-400',
-          badgeBg: 'bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800',
+          badgeBg:
+            'bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800',
           icon: <ShieldCheck className="w-3.5 h-3.5" />,
         };
       case 'Lent & Borrowed':
+        if (isBorrowedTransaction(tx)) {
+          return {
+            label: 'Borrowed',
+            textColor: 'text-rose-600 dark:text-rose-400',
+            badgeBg:
+              'bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800',
+            icon: <ArrowDownLeft className="w-3.5 h-3.5" />,
+          };
+        }
         return {
+          label: 'Lent',
           textColor: 'text-purple-600 dark:text-purple-400',
-          badgeBg: 'bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800',
-          icon: <ArrowLeftRight className="w-3.5 h-3.5" />,
+          badgeBg:
+            'bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800',
+          icon: <ArrowUpRight className="w-3.5 h-3.5" />,
         };
       default:
         return {
+          label: tx.type,
           textColor: 'text-slate-700 dark:text-slate-300',
-          badgeBg: 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700',
+          badgeBg:
+            'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700',
           icon: null,
         };
     }
@@ -231,34 +307,39 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
     }
   };
 
-  // Calculate allocation percentages
-  const totalAllocated = goalsStats.totalAllocated;
-  const savingsPct = totalAllocated > 0 ? Math.round((goalsStats.savings / totalAllocated) * 100) : 0;
-  const emergencyPct = totalAllocated > 0 ? Math.round((goalsStats.emergencyFund / totalAllocated) * 100) : 0;
   const selectedCount = selectedRowIndices.size;
 
   return (
-    <div id="goals-view-container" className="space-y-5">
-      {/* 1. Header & Timeframe Switcher (Month / Year / All-Time) */}
+    <div id="goals-view-container" className="space-y-4 sm:space-y-5">
+      {/* 1. Header with Timeframe Switcher & Target Configurator */}
       <div className="bg-white dark:bg-slate-900 rounded-xl sm:rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 transition-colors">
-        <div>
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
-              <Target className="w-4 h-4" />
-            </div>
-            <div>
-              <h2 className="text-base sm:text-lg font-black text-slate-900 dark:text-white tracking-tight">
-                Goals & Reserves Tracker
-              </h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
-                Track long-term savings, emergency funds, and lent/borrowed balances
-              </p>
-            </div>
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
+            <Target className="w-5 h-5" />
+          </div>
+          <div>
+            <h2 className="text-base sm:text-lg font-black text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
+              <span>Goals & Reserves</span>
+            </h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+              Target progress tracking for savings, emergency fund, lent & borrowed
+            </p>
           </div>
         </div>
 
-        {/* Timeframe selector controls */}
-        <div className="flex flex-wrap items-center gap-2.5">
+        {/* Target Edit Action & Timeframe Selector */}
+        <div className="flex flex-wrap items-center gap-2 sm:gap-2.5">
+          {/* Configure Targets Button */}
+          <button
+            type="button"
+            id="btn-edit-goals-targets"
+            onClick={() => setIsTargetModalOpen(true)}
+            className="px-3 py-1.5 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 text-xs font-bold rounded-xl shadow-2xs flex items-center gap-1.5 transition-all cursor-pointer"
+          >
+            <Sliders className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+            <span>Set Targets</span>
+          </button>
+
           {/* Mode Pill: Month | Year | All-Time */}
           <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl text-xs font-bold">
             <button
@@ -271,7 +352,7 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
                   : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
               }`}
             >
-              Month View
+              Month
             </button>
             <button
               type="button"
@@ -283,7 +364,7 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
                   : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
               }`}
             >
-              Year View
+              Year
             </button>
             <button
               type="button"
@@ -310,7 +391,7 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
               >
                 <ChevronLeft className="w-4 h-4" />
               </button>
-              <span className="text-xs font-bold text-slate-800 dark:text-slate-100 px-2 min-w-[100px] text-center">
+              <span className="text-xs font-bold text-slate-800 dark:text-slate-100 px-2 min-w-[90px] text-center">
                 {formatMonthYear(selectedMonth)}
               </span>
               <button
@@ -335,7 +416,7 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
               >
                 <ChevronLeft className="w-4 h-4" />
               </button>
-              <span className="text-xs font-bold text-slate-800 dark:text-slate-100 px-2 min-w-[60px] text-center">
+              <span className="text-xs font-bold text-slate-800 dark:text-slate-100 px-2 min-w-[50px] text-center">
                 {selectedYear}
               </span>
               <button
@@ -351,137 +432,271 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
         </div>
       </div>
 
-      {/* 2. Top Summary Metric Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-4">
-        {/* 1. Savings & Investments */}
+      {/* 2. Top Summary Metric Cards: Savings Target, Emergency Fund Target, Lent, Borrowed, Capital Preserved */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3.5 sm:gap-4">
+        {/* 1. Savings & Investments Target */}
         <div
           id="card-goals-savings"
-          className="bg-white dark:bg-slate-900 p-4 sm:p-5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col justify-between hover:border-blue-300 dark:hover:border-blue-700 transition-all"
+          className="bg-white dark:bg-slate-900 p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col justify-between hover:border-blue-300 dark:hover:border-blue-700 transition-all group"
         >
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+            <span className="text-[11px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
               Total Savings
             </span>
-            <div className="w-7 h-7 rounded-md bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 flex items-center justify-center">
+            <div className="w-8 h-8 rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 flex items-center justify-center">
               <PiggyBank className="w-4 h-4" />
             </div>
           </div>
-          <div className="mt-3">
-            <div className="text-xl sm:text-2xl font-bold text-blue-600 dark:text-blue-400 tracking-tight">
-              {formatINR(goalsStats.savings)}
+
+          <div className="mt-3.5">
+            <div className="flex items-baseline justify-between gap-2">
+              <div className="text-xl sm:text-2xl font-black text-blue-600 dark:text-blue-400 tracking-tight">
+                {formatINR(goalsStats.savings)}
+              </div>
+              <span className="text-xs font-black px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/80 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800/80 shrink-0">
+                {savingsProgress.percentage}%
+              </span>
             </div>
-            <p className="text-[10px] text-slate-400 dark:text-slate-500 font-medium mt-0.5 truncate">
-              Investments, mutual funds & SIP
-            </p>
+
+            {/* Target Progress Bar */}
+            <div className="w-full h-2 bg-slate-100 dark:bg-slate-800 rounded-full mt-2.5 overflow-hidden">
+              <div
+                style={{ width: `${savingsProgress.cappedPercentage}%` }}
+                className="bg-blue-500 h-full rounded-full transition-all duration-500"
+              />
+            </div>
+
+            <div className="mt-2 flex items-center justify-between text-[11px] text-slate-400 dark:text-slate-500 font-medium">
+              <span className="truncate">Target: {formatINR(savingsTargetVal)}</span>
+              <button
+                type="button"
+                onClick={() => setIsTargetModalOpen(true)}
+                className="text-blue-600 dark:text-blue-400 hover:underline text-[10px] font-bold cursor-pointer shrink-0 ml-1"
+              >
+                Edit
+              </button>
+            </div>
           </div>
         </div>
 
-        {/* 2. Emergency Fund Reserves */}
+        {/* 2. Emergency Fund Target */}
         <div
           id="card-goals-emergency"
-          className="bg-white dark:bg-slate-900 p-4 sm:p-5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col justify-between hover:border-amber-300 dark:hover:border-amber-700 transition-all"
+          className="bg-white dark:bg-slate-900 p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col justify-between hover:border-amber-300 dark:hover:border-amber-700 transition-all group"
         >
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+            <span className="text-[11px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
               Emergency Fund
             </span>
-            <div className="w-7 h-7 rounded-md bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center">
+            <div className="w-8 h-8 rounded-xl bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center">
               <ShieldCheck className="w-4 h-4" />
             </div>
           </div>
-          <div className="mt-3">
-            <div className="text-xl sm:text-2xl font-bold text-amber-600 dark:text-amber-400 tracking-tight">
-              {formatINR(goalsStats.emergencyFund)}
+
+          <div className="mt-3.5">
+            <div className="flex items-baseline justify-between gap-2">
+              <div className="text-xl sm:text-2xl font-black text-amber-600 dark:text-amber-400 tracking-tight">
+                {formatINR(goalsStats.emergencyFund)}
+              </div>
+              <span className="text-xs font-black px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/80 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800/80 shrink-0">
+                {emergencyProgress.percentage}%
+              </span>
             </div>
-            <p className="text-[10px] text-slate-400 dark:text-slate-500 font-medium mt-0.5 truncate">
-              Liquid emergency reserves
-            </p>
+
+            {/* Target Progress Bar */}
+            <div className="w-full h-2 bg-slate-100 dark:bg-slate-800 rounded-full mt-2.5 overflow-hidden">
+              <div
+                style={{ width: `${emergencyProgress.cappedPercentage}%` }}
+                className="bg-amber-500 h-full rounded-full transition-all duration-500"
+              />
+            </div>
+
+            <div className="mt-2 flex items-center justify-between text-[11px] text-slate-400 dark:text-slate-500 font-medium">
+              <span className="truncate">Target: {formatINR(emergencyTargetVal)}</span>
+              <button
+                type="button"
+                onClick={() => setIsTargetModalOpen(true)}
+                className="text-amber-600 dark:text-amber-400 hover:underline text-[10px] font-bold cursor-pointer shrink-0 ml-1"
+              >
+                Edit
+              </button>
+            </div>
           </div>
         </div>
 
-        {/* 3. Lent & Borrowed */}
+        {/* 3. LENT (Receivables) - Clean, prominent */}
         <div
-          id="card-goals-lent-borrowed"
-          className="bg-white dark:bg-slate-900 p-4 sm:p-5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col justify-between hover:border-purple-300 dark:hover:border-purple-700 transition-all"
+          id="card-goals-lent"
+          className="bg-white dark:bg-slate-900 p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col justify-between hover:border-purple-300 dark:hover:border-purple-700 transition-all"
         >
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-              Lent / Borrowed
+            <span className="text-[11px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+              Lent (Receivable)
             </span>
-            <div className="w-7 h-7 rounded-md bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400 flex items-center justify-center">
-              <ArrowLeftRight className="w-4 h-4" />
+            <div className="w-8 h-8 rounded-xl bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400 flex items-center justify-center">
+              <ArrowUpRight className="w-4 h-4" />
             </div>
           </div>
-          <div className="mt-3">
-            <div className="text-xl sm:text-2xl font-bold text-purple-600 dark:text-purple-400 tracking-tight">
-              {formatINR(goalsStats.lentBorrowed)}
+
+          <div className="mt-3.5">
+            <div className="text-xl sm:text-2xl font-black text-purple-600 dark:text-purple-400 tracking-tight">
+              {formatINR(goalsStats.lent)}
             </div>
-            <p className="text-[10px] text-slate-400 dark:text-slate-500 font-medium mt-0.5 truncate">
-              Outstanding receivables & debts
+
+            {/* Visual Accent */}
+            <div className="w-full h-2 bg-slate-100 dark:bg-slate-800 rounded-full mt-2.5 overflow-hidden">
+              <div
+                style={{ width: goalsStats.lent > 0 ? '100%' : '0%' }}
+                className="bg-purple-500 h-full rounded-full transition-all duration-500"
+              />
+            </div>
+
+            <p className="text-[11px] text-slate-400 dark:text-slate-500 font-medium mt-2 truncate">
+              Money given to others / to collect
             </p>
           </div>
         </div>
 
-        {/* 4. Total Capital Preserved */}
+        {/* 4. BORROWED (Payables) - Clean, prominent */}
+        <div
+          id="card-goals-borrowed"
+          className="bg-white dark:bg-slate-900 p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col justify-between hover:border-rose-300 dark:hover:border-rose-700 transition-all"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+              Borrowed (Payable)
+            </span>
+            <div className="w-8 h-8 rounded-xl bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 flex items-center justify-center">
+              <ArrowDownLeft className="w-4 h-4" />
+            </div>
+          </div>
+
+          <div className="mt-3.5">
+            <div className="text-xl sm:text-2xl font-black text-rose-600 dark:text-rose-400 tracking-tight">
+              {formatINR(goalsStats.borrowed)}
+            </div>
+
+            {/* Visual Accent */}
+            <div className="w-full h-2 bg-slate-100 dark:bg-slate-800 rounded-full mt-2.5 overflow-hidden">
+              <div
+                style={{ width: goalsStats.borrowed > 0 ? '100%' : '0%' }}
+                className="bg-rose-500 h-full rounded-full transition-all duration-500"
+              />
+            </div>
+
+            <p className="text-[11px] text-slate-400 dark:text-slate-500 font-medium mt-2 truncate">
+              Money taken / to repay
+            </p>
+          </div>
+        </div>
+
+        {/* 5. Total Capital Preserved - Shows percentage calculated from progress toward combined Savings + Emergency Fund targets */}
         <div
           id="card-goals-total-allocated"
-          className="bg-white dark:bg-slate-900 p-4 sm:p-5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col justify-between hover:border-indigo-300 dark:hover:border-indigo-700 transition-all"
+          className="col-span-1 sm:col-span-2 lg:col-span-1 xl:col-span-1 bg-white dark:bg-slate-900 p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col justify-between hover:border-indigo-300 dark:hover:border-indigo-700 transition-all"
         >
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+            <span className="text-[11px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
               Capital Preserved
             </span>
-            <div className="w-7 h-7 rounded-md bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
+            <div className="w-8 h-8 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
               <TrendingUp className="w-4 h-4" />
             </div>
           </div>
-          <div className="mt-3">
-            <div className="text-xl sm:text-2xl font-bold text-indigo-600 dark:text-indigo-400 tracking-tight">
-              {formatINR(goalsStats.totalAllocated)}
+
+          <div className="mt-3.5">
+            <div className="flex items-baseline justify-between gap-2">
+              <div className="text-xl sm:text-2xl font-black text-indigo-600 dark:text-indigo-400 tracking-tight">
+                {formatINR(capitalPreservedProgress.combinedAchieved)}
+              </div>
+              <span className="text-xs font-black px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/80 shrink-0">
+                {capitalPreservedProgress.percentage}%
+              </span>
             </div>
-            <p className="text-[10px] text-slate-400 dark:text-slate-500 font-medium mt-0.5 truncate">
-              Savings + Emergency Fund
-            </p>
+
+            {/* Combined Target Progress Bar */}
+            <div className="w-full h-2 bg-slate-100 dark:bg-slate-800 rounded-full mt-2.5 overflow-hidden">
+              <div
+                style={{ width: `${capitalPreservedProgress.cappedPercentage}%` }}
+                className="bg-indigo-500 h-full rounded-full transition-all duration-500"
+              />
+            </div>
+
+            <div className="mt-2 flex items-center justify-between text-[11px] text-slate-400 dark:text-slate-500 font-medium">
+              <span className="truncate">Combined: {formatINR(capitalPreservedProgress.combinedTarget)}</span>
+              <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 shrink-0 ml-1">
+                Savings + Emergency
+              </span>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* 3. Visual Allocation Breakdown Bar */}
-      {totalAllocated > 0 && (
-        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-xs p-4 transition-colors">
-          <div className="flex items-center justify-between text-xs mb-2">
-            <span className="font-bold text-slate-700 dark:text-slate-300">Reserves Allocation Ratio</span>
-            <div className="flex items-center gap-4 text-[11px] font-semibold">
-              <span className="flex items-center gap-1.5 text-blue-600 dark:text-blue-400">
-                <span className="w-2.5 h-2.5 rounded-full bg-blue-500" />
-                Savings: {savingsPct}% ({formatINR(goalsStats.savings)})
-              </span>
-              <span className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
-                <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
-                Emergency: {emergencyPct}% ({formatINR(goalsStats.emergencyFund)})
-              </span>
-            </div>
+      {/* 3. Visual Allocation Ratio & Progress Card */}
+      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs p-4 sm:p-5 transition-colors">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+            <h3 className="text-xs font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wide">
+              Reserves Growth vs Financial Targets
+            </h3>
           </div>
-          {/* Allocation Progress Bar */}
-          <div className="w-full h-3 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden flex">
-            <div
-              style={{ width: `${savingsPct}%` }}
-              className="bg-blue-500 h-full transition-all duration-500"
-              title={`Savings: ${savingsPct}%`}
-            />
-            <div
-              style={{ width: `${emergencyPct}%` }}
-              className="bg-amber-500 h-full transition-all duration-500"
-              title={`Emergency Fund: ${emergencyPct}%`}
-            />
+          <div className="flex flex-wrap items-center gap-3 sm:gap-4 text-xs font-semibold">
+            <span className="flex items-center gap-1.5 text-blue-600 dark:text-blue-400">
+              <span className="w-2.5 h-2.5 rounded-full bg-blue-500" />
+              Savings: {savingsProgress.percentage}% of {formatINR(savingsTargetVal)}
+            </span>
+            <span className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
+              <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
+              Emergency: {emergencyProgress.percentage}% of {formatINR(emergencyTargetVal)}
+            </span>
           </div>
         </div>
-      )}
+
+        {/* Dual Progress Bars */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-1">
+          {/* Savings bar */}
+          <div className="p-3 bg-slate-50/70 dark:bg-slate-800/40 rounded-xl border border-slate-200/80 dark:border-slate-800">
+            <div className="flex items-center justify-between text-xs mb-1.5">
+              <span className="font-bold text-slate-700 dark:text-slate-300">Savings Target Fulfillment</span>
+              <span className="font-extrabold text-blue-600 dark:text-blue-400">{savingsProgress.percentage}%</span>
+            </div>
+            <div className="w-full h-2.5 bg-slate-200/80 dark:bg-slate-700 rounded-full overflow-hidden">
+              <div
+                style={{ width: `${savingsProgress.cappedPercentage}%` }}
+                className="bg-blue-500 h-full rounded-full transition-all duration-500"
+              />
+            </div>
+            <div className="flex items-center justify-between text-[10px] text-slate-400 dark:text-slate-500 mt-1.5 font-medium">
+              <span>{formatINR(goalsStats.savings)} achieved</span>
+              <span>{formatINR(savingsProgress.remaining)} remaining</span>
+            </div>
+          </div>
+
+          {/* Emergency Fund bar */}
+          <div className="p-3 bg-slate-50/70 dark:bg-slate-800/40 rounded-xl border border-slate-200/80 dark:border-slate-800">
+            <div className="flex items-center justify-between text-xs mb-1.5">
+              <span className="font-bold text-slate-700 dark:text-slate-300">Emergency Fund Fulfillment</span>
+              <span className="font-extrabold text-amber-600 dark:text-amber-400">{emergencyProgress.percentage}%</span>
+            </div>
+            <div className="w-full h-2.5 bg-slate-200/80 dark:bg-slate-700 rounded-full overflow-hidden">
+              <div
+                style={{ width: `${emergencyProgress.cappedPercentage}%` }}
+                className="bg-amber-500 h-full rounded-full transition-all duration-500"
+              />
+            </div>
+            <div className="flex items-center justify-between text-[10px] text-slate-400 dark:text-slate-500 mt-1.5 font-medium">
+              <span>{formatINR(goalsStats.emergencyFund)} achieved</span>
+              <span>{formatINR(emergencyProgress.remaining)} remaining</span>
+            </div>
+          </div>
+        </div>
+      </div>
 
       {/* 4. Goals Activity Table & List */}
       <div
         id="goals-activity-card"
-        className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-xs overflow-hidden flex flex-col transition-colors"
+        className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs overflow-hidden flex flex-col transition-colors"
       >
         {/* Header & Controls */}
         <div className="px-4 sm:px-5 py-3.5 border-b border-slate-100 dark:border-slate-800 flex flex-col lg:flex-row lg:items-center justify-between gap-3 bg-slate-50/60 dark:bg-slate-800/40">
@@ -536,17 +751,19 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
               />
             </div>
 
-            {/* Type Filter */}
+            {/* Type Filter (Supports ALL, Savings, Emergency Fund, Lent, Borrowed) */}
             <select
               id="goals-filter-type"
               value={filterType}
               onChange={(e) => setFilterType(e.target.value)}
               className="py-1.5 px-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
             >
-              <option value="ALL">All Goals</option>
-              <option value="Savings">Savings</option>
-              <option value="Emergency Fund">Emergency Fund</option>
-              <option value="Lent & Borrowed">Lent & Borrowed</option>
+              <option value="ALL">All Reserves & Goals</option>
+              <option value="Savings">Savings Only</option>
+              <option value="Emergency Fund">Emergency Fund Only</option>
+              <option value="Lent">Lent (Receivables)</option>
+              <option value="Borrowed">Borrowed (Payables)</option>
+              <option value="Lent & Borrowed">All Lent & Borrowed</option>
             </select>
 
             {/* Quick Add Goal Trigger */}
@@ -602,7 +819,7 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
                   )}.`
                 : timeframe === 'year'
                 ? `No savings or goals entries recorded for year ${selectedYear}.`
-                : 'Start recording your savings, investments, and emergency reserves to build your goals history.'}
+                : 'Start recording your savings, investments, and emergency reserves to track your progress.'}
             </p>
             {onOpenAddGoal && (
               <button
@@ -650,7 +867,7 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
                 </thead>
                 <tbody className="divide-y divide-slate-50 dark:divide-slate-800/60">
                   {filteredGoalsTransactions.map((tx) => {
-                    const style = getTypeStyle(tx.type);
+                    const style = getTypeStyle(tx);
                     const isSelected = tx.rowIndex !== undefined && selectedRowIndices.has(tx.rowIndex);
 
                     return (
@@ -683,7 +900,7 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
                             className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md border text-[11px] font-bold ${style.badgeBg}`}
                           >
                             {style.icon}
-                            {tx.type}
+                            {style.label}
                           </span>
                         </td>
                         <td className="px-4 py-3 italic text-slate-400 dark:text-slate-500 text-[11px] max-w-xs truncate">
@@ -714,7 +931,7 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
             {/* Mobile Card View */}
             <div className="md:hidden divide-y divide-slate-100 dark:divide-slate-800">
               {filteredGoalsTransactions.map((tx) => {
-                const style = getTypeStyle(tx.type);
+                const style = getTypeStyle(tx);
                 const isSelected = tx.rowIndex !== undefined && selectedRowIndices.has(tx.rowIndex);
 
                 return (
@@ -739,31 +956,39 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
                       />
                     </div>
 
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold border ${style.badgeBg}`}>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold border ${style.badgeBg}`}
+                        >
                           {style.icon}
-                          {tx.type}
+                          {style.label}
                         </span>
-                        <span className="text-[10px] text-slate-400 dark:text-slate-500">{formatDate(tx.date)}</span>
+                        <span className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate">
+                          {tx.category}
+                        </span>
                       </div>
-                      <div className="font-bold text-xs text-slate-800 dark:text-slate-200 truncate">{tx.category}</div>
-                      {tx.description && (
-                        <div className="text-[11px] italic text-slate-400 dark:text-slate-500 truncate mt-0.5">
-                          {tx.description}
-                        </div>
-                      )}
+                      <div className="text-[11px] text-slate-400 dark:text-slate-500 mt-1 flex items-center gap-2">
+                        <span>{formatDate(tx.date)}</span>
+                        {tx.description && (
+                          <>
+                            <span>•</span>
+                            <span className="truncate italic">{tx.description}</span>
+                          </>
+                        )}
+                      </div>
                     </div>
 
                     <div className="flex items-center gap-2 shrink-0">
-                      <div className={`font-bold text-xs sm:text-sm text-right ${style.textColor}`}>
+                      <div className={`text-sm font-extrabold ${style.textColor}`}>
                         {formatINR(tx.amount)}
                       </div>
+
                       {(onDeleteTransaction || onDeleteTransactionsBatch) && (
                         <button
                           type="button"
                           onClick={() => handleTriggerSingleDelete(tx)}
-                          className="p-1.5 text-slate-400 hover:text-rose-600 rounded-md"
+                          className="p-1.5 text-slate-400 hover:text-rose-600 rounded-md transition-colors"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
@@ -777,7 +1002,7 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
         )}
       </div>
 
-      {/* Confirmation Dialog */}
+      {/* Single / Bulk Delete Confirmation Dialog */}
       <ConfirmationDialog
         isOpen={pendingDeleteIndices !== null && pendingDeleteIndices.length > 0}
         title={
@@ -786,27 +1011,31 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
             : 'Delete Goal Entry?'
         }
         message={
-          pendingDeleteIndices && pendingDeleteIndices.length > 1
-            ? `Are you sure you want to permanently delete the ${pendingDeleteIndices.length} selected entries from your Google Sheet?`
-            : pendingDeleteTx
-            ? `Are you sure you want to remove row #${pendingDeleteTx.rowIndex} (${pendingDeleteTx.category} - ${formatINR(
-                pendingDeleteTx.amount || 0
-              )}) from your Google Sheet?`
-            : `Are you sure you want to delete the selected entry from your Google Sheet?`
+          pendingDeleteTx
+            ? `Are you sure you want to permanently delete the entry "${pendingDeleteTx.category}" of ${formatINR(
+                pendingDeleteTx.amount
+              )}? This will delete row ${pendingDeleteTx.rowIndex} from your Google Sheet.`
+            : `Are you sure you want to permanently delete ${
+                pendingDeleteIndices?.length || 0
+              } selected entries from your Google Sheet?`
         }
-        confirmLabel={
-          pendingDeleteIndices && pendingDeleteIndices.length > 1
-            ? `Delete ${pendingDeleteIndices.length} from Sheet`
-            : 'Delete from Sheet'
-        }
+        confirmLabel={isDeleting ? 'Deleting...' : 'Delete Permanently'}
         cancelLabel="Cancel"
         isDestructive={true}
-        isLoading={isDeleting}
         onConfirm={handleConfirmDelete}
         onCancel={() => {
           setPendingDeleteIndices(null);
           setPendingDeleteTx(null);
         }}
+      />
+
+      {/* Edit Goals Targets Modal */}
+      <EditGoalsTargetModal
+        isOpen={isTargetModalOpen}
+        onClose={() => setIsTargetModalOpen(false)}
+        currentSavingsTarget={savingsTargetVal}
+        currentEmergencyTarget={emergencyTargetVal}
+        onSaveTargets={handleSaveTargets}
       />
     </div>
   );

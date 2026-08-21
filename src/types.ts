@@ -37,6 +37,8 @@ export interface DashboardStats {
 export interface GoalsStats {
   savings: number;
   emergencyFund: number;
+  lent: number;
+  borrowed: number;
   lentBorrowed: number;
   totalAllocated: number;
 }
@@ -72,4 +74,24 @@ export interface SpreadsheetInfo {
 }
 
 export type MobileTab = 'home' | 'goals' | 'add' | 'analysis' | 'settings';
+
+export interface RecurringTemplate {
+  id: string;
+  name: string;
+  type: TransactionType;
+  category: string;
+  amount: number;
+  dayOfMonth: number; // 1-31
+  description: string;
+  isActive: boolean;
+}
+
+export interface MonthComparisonData {
+  monthKey: string; // YYYY-MM
+  label: string; // e.g. "Aug 2026"
+  income: number;
+  expenses: number;
+  savings: number;
+  net: number;
+}
 

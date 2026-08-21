@@ -16,6 +16,7 @@ import {
   readCategories,
   readTransactions,
   appendTransaction,
+  updateTransactionRow,
   addCategoryToSheet,
   deleteTransactionRow,
   deleteTransactionsBatch,
@@ -46,6 +47,7 @@ import { SummaryCards } from './components/SummaryCards';
 import { DashboardMonthNav } from './components/DashboardMonthNav';
 import { AddTransactionForm } from './components/AddTransactionForm';
 import { ExpensePieChart } from './components/ExpensePieChart';
+import { MonthlyComparisonChart } from './components/MonthlyComparisonChart';
 import { TrendLineChart } from './components/TrendLineChart';
 import { RecentActivity } from './components/RecentActivity';
 import { GoalsView } from './components/GoalsView';
@@ -61,6 +63,7 @@ import {
   X,
   Wallet,
   Activity,
+  BarChart3,
 } from 'lucide-react';
 
 export default function App() {
@@ -70,7 +73,6 @@ export default function App() {
   useEffect(() => {
     applyTheme(currentTheme);
 
-    // If system theme, listen to OS theme change events
     if (currentTheme === 'system') {
       const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
       const handleChange = () => {
@@ -171,6 +173,34 @@ export default function App() {
     }
   }, [token, loadData]);
 
+  // Auto-Sync: Periodic background poll (every 30s) and on window focus
+  useEffect(() => {
+    if (!token) return;
+
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible' && !isRefreshing && !isLoadingData) {
+        const currentToken = token || getAccessToken();
+        if (currentToken) {
+          loadData(currentToken, false);
+        }
+      }
+    }, 30000);
+
+    const handleFocus = () => {
+      const currentToken = token || getAccessToken();
+      if (currentToken && !isRefreshing) {
+        loadData(currentToken, false);
+      }
+    };
+
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [token, isRefreshing, isLoadingData, loadData]);
+
   // Handle Google Sign In
   const handleSignIn = async () => {
     setIsLoggingIn(true);
@@ -210,7 +240,7 @@ export default function App() {
     }
   };
 
-  // Handle Save Transaction
+  // Handle Save New Transaction
   const handleSaveTransaction = async (newTx: {
     date: string;
     type: TransactionType;
@@ -229,6 +259,43 @@ export default function App() {
     if (activeMobileTab === 'add') {
       setActiveMobileTab('home');
     }
+  };
+
+  // Handle Modify / Update Existing Transaction in Google Sheet
+  const handleUpdateTransaction = async (
+    rowIndex: number,
+    updatedData: {
+      date: string;
+      type: TransactionType;
+      category: string;
+      amount: number;
+      description: string;
+    }
+  ) => {
+    const currentToken = token || getAccessToken();
+    if (!currentToken || !sheetInfo) {
+      throw new Error('Google Spreadsheet connection is unavailable. Please sign in again.');
+    }
+
+    await updateTransactionRow(currentToken, sheetInfo.id, rowIndex, updatedData);
+    await loadData(currentToken, true);
+  };
+
+  // Handle Apply Recurring Transaction
+  const handleApplyRecurring = async (tx: {
+    date: string;
+    type: TransactionType;
+    category: string;
+    amount: number;
+    description: string;
+  }) => {
+    const currentToken = token || getAccessToken();
+    if (!currentToken || !sheetInfo) {
+      throw new Error('Google Spreadsheet connection is unavailable.');
+    }
+
+    await appendTransaction(currentToken, sheetInfo.id, tx);
+    await loadData(currentToken, true);
   };
 
   // Handle Add Category to Sheet
@@ -380,29 +447,7 @@ export default function App() {
                 onMonthChange={setSelectedDashboardMonth}
               />
 
-              {/* 1. Mobile Net Balance Hero Card */}
-              <div className="bg-slate-900 dark:bg-slate-900/90 text-white rounded-2xl p-5 shadow-xl border border-slate-800">
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-                    Net Balance
-                  </span>
-                  <span className="text-[10px] font-bold px-2 py-0.5 bg-indigo-500/20 text-indigo-300 rounded-md border border-indigo-500/30">
-                    INR (₹)
-                  </span>
-                </div>
-                <div
-                  className={`text-3xl font-extrabold tracking-tight mt-2 ${
-                    overallStats.netBalance >= 0 ? 'text-white' : 'text-rose-400'
-                  }`}
-                >
-                  {formatINR(overallStats.netBalance)}
-                </div>
-                <p className="text-[10px] text-slate-400 mt-1">
-                  Overall Wallet Balance Across All Accounts
-                </p>
-              </div>
-
-              {/* 2. Top Action Buttons (+ Income & − Expense) */}
+              {/* 1. Top Action Buttons (+ Income & − Expense) */}
               <div className="grid grid-cols-2 gap-3">
                 <button
                   type="button"
@@ -425,48 +470,28 @@ export default function App() {
                 </button>
               </div>
 
-              {/* 3. Mobile Income, Expenses & Leftover Balance for Selected Month */}
-              <div className="grid grid-cols-3 gap-2">
-                <div className="bg-white dark:bg-slate-900 rounded-xl p-3 border border-slate-200 dark:border-slate-800 shadow-xs transition-colors">
-                  <div className="flex items-center justify-between text-xs text-slate-400 dark:text-slate-500 font-semibold mb-0.5">
-                    <span className="text-[9px] uppercase font-bold">Income</span>
-                    <TrendingUp className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
-                  </div>
-                  <div className="text-sm font-bold text-emerald-600 dark:text-emerald-400 truncate">
-                    {formatINR(stats.totalIncome)}
-                  </div>
-                </div>
+              {/* 2. Mobile Summary Cards */}
+              <SummaryCards stats={stats} />
 
-                <div className="bg-white dark:bg-slate-900 rounded-xl p-3 border border-slate-200 dark:border-slate-800 shadow-xs transition-colors">
-                  <div className="flex items-center justify-between text-xs text-slate-400 dark:text-slate-500 font-semibold mb-0.5">
-                    <span className="text-[9px] uppercase font-bold">Expenses</span>
-                    <TrendingDown className="w-3 h-3 text-rose-600 dark:text-rose-400" />
-                  </div>
-                  <div className="text-sm font-bold text-rose-600 dark:text-rose-400 truncate">
-                    {formatINR(stats.totalExpenses)}
-                  </div>
-                </div>
+              {/* 4. Mobile Monthly Income vs Expenses Comparison Chart */}
+              <MonthlyComparisonChart
+                transactions={transactions}
+                selectedMonth={selectedDashboardMonth}
+                onSelectMonth={(monthKey) => setSelectedDashboardMonth(monthKey)}
+              />
 
-                <div className="bg-white dark:bg-slate-900 rounded-xl p-3 border border-slate-200 dark:border-slate-800 shadow-xs transition-colors">
-                  <div className="flex items-center justify-between text-xs text-slate-400 dark:text-slate-500 font-semibold mb-0.5">
-                    <span className="text-[9px] uppercase font-bold">Leftover</span>
-                    <Activity className="w-3 h-3 text-indigo-600 dark:text-indigo-400" />
-                  </div>
-                  <div className={`text-sm font-bold truncate ${stats.leftoverBalance >= 0 ? 'text-indigo-600 dark:text-indigo-400' : 'text-rose-600 dark:text-rose-400'}`}>
-                    {stats.leftoverBalance >= 0 ? '' : '−'}{formatINR(Math.abs(stats.leftoverBalance))}
-                  </div>
-                </div>
-              </div>
-
-              {/* 4. Mobile Expense Breakdown Pie Chart */}
+              {/* 5. Mobile Expense Breakdown Pie Chart */}
               <ExpensePieChart data={currentMonthExpenses} monthLabel={monthLabel} />
 
-              {/* 5. Mobile Recent Activity Section */}
+              {/* 6. Mobile Recent Activity Table & Categorized Tabs */}
               <RecentActivity
                 transactions={transactions}
+                categories={categories}
                 onAddNewClick={() => setActiveMobileTab('add')}
                 onDeleteTransaction={handleDeleteTransaction}
                 onDeleteTransactionsBatch={handleDeleteTransactionsBatch}
+                onUpdateTransaction={handleUpdateTransaction}
+                onApplyRecurring={handleApplyRecurring}
                 sheetUrl={sheetInfo?.url}
                 selectedMonth={selectedDashboardMonth}
               />
@@ -493,6 +518,7 @@ export default function App() {
                 categories={categories}
                 initialType={preSelectedType}
                 onSave={handleSaveTransaction}
+                sheetUrl={sheetInfo?.url}
                 onSuccessCallback={() => {
                   setActiveMobileTab('home');
                 }}
@@ -503,6 +529,11 @@ export default function App() {
           {/* MOBILE TAB 4: ANALYSIS */}
           {activeMobileTab === 'analysis' && (
             <div className="space-y-4">
+              <MonthlyComparisonChart
+                transactions={transactions}
+                selectedMonth={selectedDashboardMonth}
+                onSelectMonth={(monthKey) => setSelectedDashboardMonth(monthKey)}
+              />
               <ExpensePieChart data={currentMonthExpenses} monthLabel={monthLabel} />
               <TrendLineChart
                 transactions={transactions}
@@ -541,35 +572,55 @@ export default function App() {
                 onMonthChange={setSelectedDashboardMonth}
               />
 
-              {/* Top Metric Cards: Net Balance, Total Income, Total Expenses, Cash Flow */}
-              <SummaryCards stats={stats} monthLabel={monthLabel} />
+              {/* Top Metric Cards: Total Income, Total Expenses, Net Balance, Leftover Balance */}
+              <SummaryCards stats={stats} />
 
-              {/* Main Grid: Left Charts (2 cols) + Right Add Form (1 col) */}
+              {/* Comparison & Category Breakdown Row */}
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-                {/* Left Area: Charts */}
-                <div className="lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-5">
+                {/* Left Area: Monthly Comparison Bar Graph (2 cols) */}
+                <div className="lg:col-span-2">
+                  <MonthlyComparisonChart
+                    transactions={transactions}
+                    selectedMonth={selectedDashboardMonth}
+                    onSelectMonth={(monthKey) => setSelectedDashboardMonth(monthKey)}
+                  />
+                </div>
+
+                {/* Right Area: Category Expense Breakdown Donut Chart (1 col) */}
+                <div className="lg:col-span-1">
                   <ExpensePieChart data={currentMonthExpenses} monthLabel={monthLabel} />
+                </div>
+              </div>
+
+              {/* Charts & Quick Add Row */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+                {/* Left Area: Daily Cashflow Trend */}
+                <div className="lg:col-span-2">
                   <TrendLineChart
                     transactions={transactions}
                     selectedMonth={selectedDashboardMonth}
                   />
                 </div>
 
-                {/* Right/Sidebar Area: Always Available Quick Add Transaction Form */}
+                {/* Right Area: Always Available Quick Add Transaction Form */}
                 <div className="lg:col-span-1">
                   <AddTransactionForm
                     categories={categories}
                     initialType={preSelectedType}
                     onSave={handleSaveTransaction}
+                    sheetUrl={sheetInfo?.url}
                   />
                 </div>
               </div>
 
-              {/* Bottom Area: Full Recent Activity Table */}
+              {/* Bottom Area: Full Categorized Recent Activity Table with Modify, Export & Filters */}
               <RecentActivity
                 transactions={transactions}
+                categories={categories}
                 onDeleteTransaction={handleDeleteTransaction}
                 onDeleteTransactionsBatch={handleDeleteTransactionsBatch}
+                onUpdateTransaction={handleUpdateTransaction}
+                onApplyRecurring={handleApplyRecurring}
                 sheetUrl={sheetInfo?.url}
                 selectedMonth={selectedDashboardMonth}
               />

@@ -13,8 +13,13 @@ import {
   Sun,
   Moon,
   Laptop,
+  Lock,
+  KeyRound,
+  Shield,
 } from 'lucide-react';
 import { CategoryData, SpreadsheetInfo, ThemeMode } from '../types';
+import { SecurityPinModal, PinModalMode } from './SecurityPinModal';
+import { hasSecurityPinSet } from '../utils/security';
 
 interface SettingsViewProps {
   sheetInfo: SpreadsheetInfo | null;
@@ -48,6 +53,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [isAddingCat, setIsAddingCat] = useState(false);
   const [catSuccess, setCatSuccess] = useState<string | null>(null);
   const [catError, setCatError] = useState<string | null>(null);
+
+  const [isPinModalOpen, setIsPinModalOpen] = useState(false);
+  const [pinModalMode, setPinModalMode] = useState<PinModalMode>('change');
 
   const handleAddCategorySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -249,7 +257,66 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         </form>
       </div>
 
-      {/* 3. Google Spreadsheet Connection Status */}
+      {/* 3. Goals & Reserves Security PIN */}
+      <div className="bg-white dark:bg-slate-900 rounded-xl p-5 md:p-6 shadow-xs border border-slate-200 dark:border-slate-800 transition-colors">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+          <div>
+            <h2 className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wide flex items-center gap-2">
+              <Shield className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+              Goals & Reserves Security Lock
+            </h2>
+            <p className="text-xs text-slate-400 dark:text-slate-500 font-medium mt-0.5">
+              Protects sensitive balances and reveals amounts only after entering your 4-digit PIN
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              id="btn-settings-change-pin"
+              onClick={() => {
+                setPinModalMode('change');
+                setIsPinModalOpen(true);
+              }}
+              className="px-3 py-1.5 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 text-xs font-bold rounded-lg border border-indigo-200 dark:border-indigo-800 flex items-center gap-1.5 transition-colors cursor-pointer"
+            >
+              <KeyRound className="w-3.5 h-3.5" />
+              <span>Change PIN</span>
+            </button>
+
+            <button
+              type="button"
+              id="btn-settings-set-pin"
+              onClick={() => {
+                setPinModalMode('setup');
+                setIsPinModalOpen(true);
+              }}
+              className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
+            >
+              <Lock className="w-3.5 h-3.5" />
+              <span>Set Custom PIN</span>
+            </button>
+          </div>
+        </div>
+
+        <div className="p-4 bg-slate-50/70 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-xl flex items-center justify-between text-xs">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-indigo-100 dark:bg-indigo-900/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
+              <Lock className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="font-bold text-slate-800 dark:text-slate-200">
+                {hasSecurityPinSet() ? 'Custom Security PIN is Active' : 'Default Security PIN (1234)'}
+              </div>
+              <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                Amounts in Goals are automatically masked upon navigating away from the protected view.
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* 4. Google Spreadsheet Connection Status */}
       <div className="bg-white dark:bg-slate-900 rounded-xl p-5 md:p-6 shadow-xs border border-slate-200 dark:border-slate-800 transition-colors">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
           <div>
@@ -375,6 +442,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           <span>Sign Out</span>
         </button>
       </div>
+
+      {/* Security PIN Modal */}
+      <SecurityPinModal
+        isOpen={isPinModalOpen}
+        initialMode={pinModalMode}
+        onClose={() => setIsPinModalOpen(false)}
+        onSuccessUnlock={() => {}}
+      />
     </div>
   );
 };

@@ -155,6 +155,30 @@ export function calculateCurrentMonthExpenses(
 }
 
 /**
+ * Determines whether a transaction is specifically a 'Borrowed' entry.
+ */
+export function isBorrowedTransaction(tx: { type: string; category?: string; description?: string }): boolean {
+  if (tx.type !== 'Lent & Borrowed') return false;
+  const cat = (tx.category || '').toLowerCase();
+  const desc = (tx.description || '').toLowerCase();
+  return (
+    cat.includes('borrow') ||
+    cat.includes('debt') ||
+    cat.includes('loan taken') ||
+    desc.includes('borrow') ||
+    desc.includes('debt')
+  );
+}
+
+/**
+ * Determines whether a transaction is specifically a 'Lent' entry.
+ */
+export function isLentTransaction(tx: { type: string; category?: string; description?: string }): boolean {
+  if (tx.type !== 'Lent & Borrowed') return false;
+  return !isBorrowedTransaction(tx);
+}
+
+/**
  * Computes Goals & Reserves financial metrics for a specific timeframe (Month, Year, or All-Time).
  */
 export function calculateGoalsStats(
@@ -165,7 +189,8 @@ export function calculateGoalsStats(
 ): GoalsStats {
   let savings = 0;
   let emergencyFund = 0;
-  let lentBorrowed = 0;
+  let lent = 0;
+  let borrowed = 0;
 
   for (const tx of transactions) {
     if (tx.type !== 'Savings' && tx.type !== 'Emergency Fund' && tx.type !== 'Lent & Borrowed') {
@@ -184,14 +209,20 @@ export function calculateGoalsStats(
     } else if (tx.type === 'Emergency Fund') {
       emergencyFund += amt;
     } else if (tx.type === 'Lent & Borrowed') {
-      lentBorrowed += amt;
+      if (isBorrowedTransaction(tx)) {
+        borrowed += amt;
+      } else {
+        lent += amt;
+      }
     }
   }
 
   return {
     savings,
     emergencyFund,
-    lentBorrowed,
+    lent,
+    borrowed,
+    lentBorrowed: lent + borrowed,
     totalAllocated: savings + emergencyFund,
   };
 }
@@ -282,4 +313,69 @@ export function calculateTrendData(
     };
   });
 }
+
+/**
+ * Calculates month-by-month Income, Expenses, and Net Balance for comparison bar graphs.
+ * Returns sorted chronologically.
+ */
+export function calculateMonthlyComparison(
+  transactions: Transaction[],
+  monthCount = 6
+): Array<{
+  monthKey: string;
+  label: string;
+  income: number;
+  expenses: number;
+  net: number;
+}> {
+  // Collect all unique months or last N months
+  const monthMap = new Map<string, { income: number; expenses: number }>();
+
+  // Ensure current month and recent past months are in map
+  const today = new Date();
+  for (let i = monthCount - 1; i >= 0; i--) {
+    const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const key = `${y}-${m}`;
+    monthMap.set(key, { income: 0, expenses: 0 });
+  }
+
+  // Aggregate transaction values
+  for (const tx of transactions) {
+    if (!tx.date) continue;
+    const key = tx.date.substring(0, 7); // YYYY-MM
+    const amt = typeof tx.amount === 'number' && !isNaN(tx.amount) && tx.amount > 0 ? tx.amount : 0;
+
+    if (!monthMap.has(key)) {
+      monthMap.set(key, { income: 0, expenses: 0 });
+    }
+
+    const current = monthMap.get(key)!;
+    if (tx.type === 'Income') {
+      current.income += amt;
+    } else if (tx.type === 'Expense') {
+      current.expenses += amt;
+    }
+  }
+
+  // Sort chronologically and take the last `monthCount`
+  const sortedKeys = Array.from(monthMap.keys()).sort();
+  const recentKeys = sortedKeys.slice(-Math.max(monthCount, 4));
+
+  return recentKeys.map((key) => {
+    const [y, m] = key.split('-');
+    const d = new Date(parseInt(y, 10), parseInt(m, 10) - 1, 1);
+    const label = d.toLocaleDateString('en-IN', { month: 'short', year: '2-digit' });
+    const data = monthMap.get(key) || { income: 0, expenses: 0 };
+    return {
+      monthKey: key,
+      label,
+      income: data.income,
+      expenses: data.expenses,
+      net: data.income - data.expenses,
+    };
+  });
+}
+
 

@@ -47,12 +47,84 @@ export function formatCompactINR(amount: number): string {
 }
 
 /**
- * Formats a Date object or YYYY-MM-DD string to user-friendly Indian format (e.g. 20 Aug 2026).
+ * Formats a normalized date string (YYYY-MM-DD) or any date input into 'DD-MM-YYYY' format for Excel / Google Sheets.
+ * e.g., '2026-08-20' -> '20-08-2026'
+ */
+export function formatDateToDDMMYYYY(dateString: string): string {
+  if (!dateString) return '';
+  const normalized = normalizeDateString(dateString);
+  const parts = normalized.split('-');
+  if (parts.length === 3) {
+    const year = parts[0];
+    const month = parts[1];
+    const day = parts[2];
+    return `${day}-${month}-${year}`;
+  }
+  return dateString;
+}
+
+/**
+ * Normalizes any date input (Google Sheets serial number, DD/MM/YYYY, YYYY-MM-DD, ISO string)
+ * into a standardized 'YYYY-MM-DD' string.
+ */
+export function normalizeDateString(rawDate: any): string {
+  if (!rawDate && rawDate !== 0) return '';
+
+  const str = String(rawDate).trim();
+  if (!str) return '';
+
+  // 1. Google Sheets / Excel serial number (e.g. 46255 or "46255")
+  if (/^\d{4,6}(\.\d+)?$/.test(str)) {
+    const serial = parseFloat(str);
+    // Excel/Sheets serial epoch starts 1899-12-30 (accounting for 1900 leap year bug: 25569 days from 1970-01-01)
+    const msSinceEpoch = Math.round((serial - 25569) * 86400 * 1000);
+    const dateObj = new Date(msSinceEpoch);
+    if (!isNaN(dateObj.getTime())) {
+      const year = dateObj.getUTCFullYear();
+      const month = String(dateObj.getUTCMonth() + 1).padStart(2, '0');
+      const day = String(dateObj.getUTCDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
+  }
+
+  // 2. Format: YYYY-MM-DD or YYYY/MM/DD or YYYY.MM.DD
+  const ymdMatch = str.match(/^(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})/);
+  if (ymdMatch) {
+    const year = ymdMatch[1];
+    const month = String(parseInt(ymdMatch[2], 10)).padStart(2, '0');
+    const day = String(parseInt(ymdMatch[3], 10)).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+
+  // 3. Format: DD/MM/YYYY or DD-MM-YYYY or DD.MM.YYYY
+  const dmyMatch = str.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})/);
+  if (dmyMatch) {
+    const day = String(parseInt(dmyMatch[1], 10)).padStart(2, '0');
+    const month = String(parseInt(dmyMatch[2], 10)).padStart(2, '0');
+    const year = dmyMatch[3];
+    return `${year}-${month}-${day}`;
+  }
+
+  // 4. Standard JS Date parse fallback
+  const parsed = new Date(str);
+  if (!isNaN(parsed.getTime())) {
+    const year = parsed.getFullYear();
+    const month = String(parsed.getMonth() + 1).padStart(2, '0');
+    const day = String(parsed.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+
+  return str;
+}
+
+/**
+ * Formats a Date object or date string to user-friendly Indian format (e.g. 20 Aug 2026).
  */
 export function formatDate(dateString: string): string {
   if (!dateString) return '';
   try {
-    const parts = dateString.split('-');
+    const normalized = normalizeDateString(dateString);
+    const parts = normalized.split('-');
     if (parts.length === 3) {
       const year = parseInt(parts[0], 10);
       const month = parseInt(parts[1], 10) - 1;
@@ -64,9 +136,9 @@ export function formatDate(dateString: string): string {
         year: 'numeric',
       });
     }
-    const d = new Date(dateString);
+    const d = new Date(normalized);
     return isNaN(d.getTime())
-      ? dateString
+      ? normalized
       : d.toLocaleDateString('en-IN', {
           day: 'numeric',
           month: 'short',

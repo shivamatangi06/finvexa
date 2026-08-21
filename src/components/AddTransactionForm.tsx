@@ -13,6 +13,7 @@ import {
   IndianRupee,
   Tag,
   FileText,
+  ExternalLink,
 } from 'lucide-react';
 import { TransactionType, CategoryData } from '../types';
 import { getTodayDateString } from '../utils/formatters';
@@ -29,6 +30,7 @@ interface AddTransactionFormProps {
   }) => Promise<void>;
   onSuccessCallback?: () => void;
   isCompact?: boolean;
+  sheetUrl?: string;
 }
 
 export const AddTransactionForm: React.FC<AddTransactionFormProps> = ({
@@ -36,6 +38,7 @@ export const AddTransactionForm: React.FC<AddTransactionFormProps> = ({
   initialType = 'Expense',
   onSave,
   onSuccessCallback,
+  sheetUrl,
 }) => {
   const [type, setType] = useState<TransactionType>(initialType);
   const [category, setCategory] = useState<string>('');
@@ -199,9 +202,22 @@ export const AddTransactionForm: React.FC<AddTransactionFormProps> = ({
             <PlusCircle className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
             Add Transaction
           </h2>
-          <span className="text-[10px] text-slate-400 dark:text-slate-500 uppercase font-bold tracking-wider">
-            Google Sheets
-          </span>
+          {sheetUrl ? (
+            <a
+              href={sheetUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 hover:underline transition-colors"
+              title="Open connected Google Sheet in new tab"
+            >
+              <span>Google Sheets</span>
+              <ExternalLink className="w-3 h-3" />
+            </a>
+          ) : (
+            <span className="text-[10px] text-slate-400 dark:text-slate-500 uppercase font-bold tracking-wider">
+              Google Sheets
+            </span>
+          )}
         </div>
 
         {successMessage && (

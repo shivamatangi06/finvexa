@@ -1,4 +1,5 @@
 import { Transaction, TransactionType, CategoryData, SpreadsheetInfo } from '../types';
+import { normalizeDateString, formatDateToDDMMYYYY } from '../utils/formatters';
 
 const SHEETS_BASE_URL = 'https://sheets.googleapis.com/v4/spreadsheets';
 const DRIVE_BASE_URL = 'https://www.googleapis.com/drive/v3';
@@ -347,7 +348,7 @@ export async function readCategories(accessToken: string, spreadsheetId: string)
  */
 export async function readTransactions(accessToken: string, spreadsheetId: string): Promise<Transaction[]> {
   try {
-    const url = `${SHEETS_BASE_URL}/${spreadsheetId}/values/Transactions!A2:E`;
+    const url = `${SHEETS_BASE_URL}/${spreadsheetId}/values/Transactions!A2:E?valueRenderOption=FORMATTED_VALUE&dateTimeRenderOption=FORMATTED_STRING`;
     const res = await fetch(url, {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
@@ -365,7 +366,8 @@ export async function readTransactions(accessToken: string, spreadsheetId: strin
     rows.forEach((row: string[], index: number) => {
       // Row index is index + 2 (1-based, skipping header row)
       const rowIndex = index + 2;
-      const date = row[0]?.trim() || '';
+      const rawDate = row[0] !== undefined ? row[0] : '';
+      const date = normalizeDateString(rawDate);
       const type = (row[1]?.trim() || 'Expense') as TransactionType;
       const category = row[2]?.trim() || 'Uncategorized';
       
@@ -401,7 +403,7 @@ export async function readTransactions(accessToken: string, spreadsheetId: strin
 
 /**
  * Appends a new transaction row to Transactions!A:E
- * Columns: Date, Type, Category, Amount, Description
+ * Columns: Date (DD-MM-YYYY), Type, Category, Amount, Description
  */
 export async function appendTransaction(
   accessToken: string,
@@ -409,8 +411,9 @@ export async function appendTransaction(
   transaction: Omit<Transaction, 'id' | 'rowIndex'>
 ): Promise<void> {
   try {
+    const formattedDate = formatDateToDDMMYYYY(transaction.date);
     const rowValues = [
-      transaction.date,
+      formattedDate,
       transaction.type,
       transaction.category,
       transaction.amount,
@@ -435,6 +438,47 @@ export async function appendTransaction(
     }
   } catch (error) {
     throw handleApiError(error, 'saving transaction to Google Sheets');
+  }
+}
+
+/**
+ * Modifies an existing transaction row in Google Sheets (Transactions!A{rowIndex}:E{rowIndex})
+ * Columns: Date (DD-MM-YYYY), Type, Category, Amount, Description
+ */
+export async function updateTransactionRow(
+  accessToken: string,
+  spreadsheetId: string,
+  rowIndex: number,
+  transaction: Omit<Transaction, 'id' | 'rowIndex'>
+): Promise<void> {
+  try {
+    const formattedDate = formatDateToDDMMYYYY(transaction.date);
+    const rowValues = [
+      formattedDate,
+      transaction.type,
+      transaction.category,
+      transaction.amount,
+      transaction.description || '',
+    ];
+
+    const url = `${SHEETS_BASE_URL}/${spreadsheetId}/values/Transactions!A${rowIndex}:E${rowIndex}?valueInputOption=USER_ENTERED`;
+    const res = await fetch(url, {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        values: [rowValues],
+      }),
+    });
+
+    if (!res.ok) {
+      const errJson = await res.json().catch(() => ({}));
+      throw new Error(errJson.error?.message || `Failed to update transaction in Google Sheet (HTTP ${res.status})`);
+    }
+  } catch (error) {
+    throw handleApiError(error, 'modifying transaction in Google Sheets');
   }
 }
 
